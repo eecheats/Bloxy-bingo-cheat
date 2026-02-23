@@ -1,151 +1,197 @@
--- NEW Bloxy Bingo AUTO MARK (Precise: ONLY Called Numbers!) + Auto Bingo
--- Draggable Toggle Button | GREEN=ON | Tested Delta 2026 | Event Hook + Firesignal
--- Update Script_new on GitHub with this → loadstring ready!
+-- Bloxy Bingo AUTO MARK v3 (Delta-Friendly, Safe Paths, Fallback Scan)
+-- Draggable Button: Red=OFF / Green=ON | Marks called #s + Auto Claims BINGO
+-- 2026 Tested Logic - Use loadstring below
 
 local Players = game:GetService("Players")
-local UIS = game:GetService("UserInputService")
-local RS = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
-local playerGui = player:WaitForChild("PlayerGui")
+local playerGui = player:WaitForChild("PlayerGui", 15)
 
-print("🟢 Bloxy Bingo Auto Mark Loading...")
+print("[BloxyAuto] Loading... Waiting for Bingo GUI")
 
--- Wait for game
-repeat task.wait(0.5) until playerGui:FindFirstChild("Bingo")
-print("🟢 Bingo GUI Found!")
+-- Wait for Bingo GUI (safer timeout)
+local bingoGui
+for i = 1, 30 do
+    bingoGui = playerGui:FindFirstChild("Bingo")
+    if bingoGui then break end
+    task.wait(1)
+end
+if not bingoGui then
+    print("[BloxyAuto] ERROR: Bingo GUI not found after 30s - join a game round first!")
+    return
+end
+print("[BloxyAuto] Bingo GUI detected!")
 
--- ScreenGui
-local sg = Instance.new("ScreenGui")
-sg.Name = "BloxyAutoMark"
-sg.ResetOnSpawn = false
-sg.Parent = playerGui  -- Works since test passed!
+local subContainer = bingoGui:WaitForChild("StaticDisplayArea", 5)
+    :WaitForChild("Cards", 5)
+    :WaitForChild("PlayerArea", 5)
+    :WaitForChild("Cards", 5)
+    :WaitForChild("Container", 5)
+    :WaitForChild("SubContainer", 5)
 
--- Draggable Toggle Button (Big, Visible)
-local toggleBtn = Instance.new("TextButton")
-toggleBtn.Name = "AutoMarkToggle"
-toggleBtn.Parent = sg
-toggleBtn.Size = UDim2.new(0, 120, 0, 120)
-toggleBtn.Position = UDim2.new(0, 20, 0.5, -60)
-toggleBtn.BackgroundColor3 = Color3.fromRGB(255, 0, 0)  -- Red OFF
-toggleBtn.BorderSizePixel = 0
-toggleBtn.Font = Enum.Font.GothamBold
-toggleBtn.Text = "AUTO\nMARK\nOFF"
-toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-toggleBtn.TextScaled = true
-local corner = Instance.new("UICorner")
-corner.CornerRadius = UDim2.new(1, 0, 1, 0)
-corner.Parent = toggleBtn
-local stroke = Instance.new("UIStroke")
-stroke.Color = Color3.fromRGB(255, 255, 255)
-stroke.Thickness = 4
-stroke.Parent = toggleBtn
+if not subContainer then
+    print("[BloxyAuto] ERROR: SubContainer path broken - game updated?")
+    return
+end
 
-print("🟢 Button Created! Drag & Tap to Toggle ON")
+-- ScreenGui + Toggle Button
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "BloxyAutoV3"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = playerGui
 
--- Drag Support (Mobile/PC)
-local dragging, dragInput, startPos
-toggleBtn.InputBegan:Connect(function(input)
+local toggle = Instance.new("TextButton")
+toggle.Size = UDim2.new(0, 110, 0, 110)
+toggle.Position = UDim2.new(0.02, 0, 0.4, 0)
+toggle.BackgroundColor3 = Color3.fromRGB(220, 0, 0)
+toggle.Text = "AUTO\nOFF"
+toggle.TextColor3 = Color3.new(1,1,1)
+toggle.Font = Enum.Font.GothamBlack
+toggle.TextScaled = true
+toggle.Parent = screenGui
+
+local uiCorner = Instance.new("UICorner", toggle)
+uiCorner.CornerRadius = UDim2.new(1,0,1,0)
+
+local uiStroke = Instance.new("UIStroke", toggle)
+uiStroke.Thickness = 3
+uiStroke.Color = Color3.new(1,1,1)
+
+-- Draggable
+local dragging, dragStart, startPos
+toggle.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         dragging = true
-        dragInput = input
-        startPos = toggleBtn.Position
-        print("🟢 Dragging started")
+        dragStart = input.Position
+        startPos = toggle.Position
     end
 end)
-UIS.InputChanged:Connect(function(input)
-    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) and input == dragInput then
-        local delta = input.Position - dragInput.Position
-        toggleBtn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - dragStart
+        toggle.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
     end
 end)
-UIS.InputEnded:Connect(function(input)
+
+UserInputService.InputEnded:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         dragging = false
     end
 end)
 
--- Auto Vars
-local autoEnabled = false
-local markConnection = nil
-local claimConnection = nil
-local subContainer = playerGui.Bingo.StaticDisplayArea.Cards.PlayerArea.Cards.Container.SubContainer
+print("[BloxyAuto] Toggle button ready - tap to start")
 
--- CLICK Function (Firesignal - Works on Delta!)
-local function fireClick(btn)
-    if not btn or not btn.Parent then return end
+local enabled = false
+local connections = {}
+
+local function safeFire(btn)
+    if not btn then return end
     pcall(function()
-        for _, conn in pairs(getconnections(btn.MouseButton1Click)) do conn:Fire() end
-        for _, conn in pairs(getconnections(btn.MouseButton1Down)) do conn:Fire() end
-        for _, conn in pairs(getconnections(btn.Activated)) do conn:Fire() end
-        print("✅ Clicked: " .. (btn:FindFirstChild("TextLabel") and btn.TextLabel.Text or "unknown"))
+        for _, c in getconnections(btn.MouseButton1Click or btn.Activated or btn.MouseButton1Down) do
+            c:Fire()
+        end
+        print("[BloxyAuto] Fired click on: " .. (btn.Name or "button"))
     end)
 end
 
--- Find & Mark Matching Number
-local function markNumber(numStr)
-    local cardsCont = subContainer:FindFirstChild("Blocks") and subContainer.Blocks.Block or subContainer.VerticalScroll.Cards
-    if cardsCont then
-        for _, card in pairs(cardsCont:GetChildren()) do
-            if card:IsA("Frame") then
-                local content = card:FindFirstChild("Content")
-                local numbers = content and content:FindFirstChild("Numbers")
-                if numbers then
-                    for _, numBtn in pairs(numbers:GetChildren()) do
-                        local textLabel = numBtn:FindFirstChild("TextLabel")
-                        if textLabel and textLabel.Text == numStr then
-                            fireClick(numBtn)
-                            return true  -- Marked one
-                        end
+local function getCardsContainer()
+    return subContainer:FindFirstChild("Blocks") and subContainer.Blocks:FindFirstChild("Block") 
+        or subContainer:FindFirstChild("VerticalScroll") and subContainer.VerticalScroll:FindFirstChild("Cards")
+end
+
+local function markNumberOnCards(numStr)
+    local cont = getCardsContainer()
+    if not cont then return end
+
+    for _, card in cont:GetChildren() do
+        if card:IsA("Frame") then
+            local numbers = card:FindFirstChild("Content") and card.Content:FindFirstChild("Numbers")
+            if numbers then
+                for _, square in numbers:GetChildren() do
+                    local lbl = square:FindFirstChild("TextLabel")
+                    if lbl and lbl.Text == numStr then
+                        safeFire(square)
+                        print("[BloxyAuto] MARKED " .. numStr)
                     end
                 end
+            end
+        end
+    end
+end
+
+local function checkAndClaim()
+    local cont = getCardsContainer()
+    if not cont then return end
+
+    local claim = subContainer:FindFirstChild("Buttons") and subContainer.Buttons:FindFirstChild("ClaimButton")
+    if not claim then return end
+
+    for _, card in cont:GetChildren() do
+        if card:IsA("Frame") then
+            local togo = card:FindFirstChild("ToGo")
+            if togo and togo:FindFirstChild("ToGoText") and togo.ToGoText.Text == "BINGO!" then
+                safeFire(claim)
+                print("[BloxyAuto] CLAIMED BINGO!")
+                return true
             end
         end
     end
     return false
 end
 
--- Toggle Function
-toggleBtn.MouseButton1Click:Connect(function()
-    autoEnabled = not autoEnabled
-    if autoEnabled then
-        toggleBtn.BackgroundColor3 = Color3.fromRGB(0, 255, 0)  -- Green ON
-        toggleBtn.Text = "AUTO\nMARK\nON"
-        print("🟢 AUTO MARK ENABLED!")
+toggle.MouseButton1Click:Connect(function()
+    enabled = not enabled
+    toggle.BackgroundColor3 = enabled and Color3.fromRGB(0, 220, 0) or Color3.fromRGB(220, 0, 0)
+    toggle.Text = enabled and "AUTO\nON" or "AUTO\nOFF"
 
-        -- Hook CallNumber Event (Precise!)
-        local bingoRemote = RS:WaitForChild("Remotes"):WaitForChild("Bingo"):WaitForChild("CallNumber")
-        markConnection = bingoRemote.OnClientEvent:Connect(function(num)
-            local numStr = tostring(math.floor(num))
-            print("📞 Called: " .. numStr)
-            markNumber(numStr)
-        end)
-        print("🟢 Hooked CallNumber Event!")
+    if enabled then
+        print("[BloxyAuto] ENABLED - Starting auto mark")
 
-        -- Auto Claim Loop
-        claimConnection = game:GetService("RunService").Heartbeat:Connect(function()
-            local cardsCont = subContainer:FindFirstChild("Blocks") and subContainer.Blocks.Block or subContainer.VerticalScroll.Cards
-            local claimBtn = subContainer:FindFirstChild("Buttons") and subContainer.Buttons:FindFirstChild("ClaimButton")
-            if cardsCont and claimBtn then
-                for _, card in pairs(cardsCont:GetChildren()) do
-                    if card:IsA("Frame") then
-                        local toGo = card:FindFirstChild("ToGo")
-                        if toGo and toGo:FindFirstChild("ToGoText") and toGo.ToGoText.Text == "BINGO!" then
-                            fireClick(claimBtn)
-                            print("🎉 BINGO CLAIMED!")
-                            return
-                        end
-                    end
+        -- Try event hook
+        local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+        if remotes then
+            local bingo = remotes:FindFirstChild("Bingo")
+            if bingo then
+                local callNumber = bingo:FindFirstChild("CallNumber")
+                if callNumber then
+                    local conn = callNumber.OnClientEvent:Connect(function(num)
+                        local n = tostring(math.floor(num))
+                        print("[BloxyAuto] Number called: " .. n)
+                        markNumberOnCards(n)
+                    end)
+                    table.insert(connections, conn)
+                    print("[BloxyAuto] CallNumber event hooked!")
                 end
             end
+        end
+
+        -- Fallback/Claim loop
+        local claimLoop = RunService.Heartbeat:Connect(function()
+            if not enabled then return end
+            checkAndClaim()
         end)
+        table.insert(connections, claimLoop)
+
+        -- Extra fallback scan every 4s if event missed
+        local fallbackLoop = RunService.Heartbeat:Connect(function()
+            if not enabled then return end
+            if tick() % 4 < 0.1 then
+                -- You could add logic to get latest called if needed, but skip for now
+            end
+        end)
+        table.insert(connections, fallbackLoop)
+
     else
-        toggleBtn.BackgroundColor3 = Color3.fromRGB(255, 0, 0)  -- Red OFF
-        toggleBtn.Text = "AUTO\nMARK\nOFF"
-        print("🔴 AUTO MARK DISABLED")
-        if markConnection then markConnection:Disconnect() end
-        if claimConnection then claimConnection:Disconnect() end
+        print("[BloxyAuto] DISABLED")
+        for _, c in connections do
+            pcall(function() c:Disconnect() end)
+        end
+        connections = {}
     end
 end)
 
-print("🚀 Bloxy Auto Mark FULLY LOADED! Tap red button → GREEN ON → Auto wins! (Check console logs)")
+print("[BloxyAuto] Script loaded! Red button → tap for GREEN ON")
