@@ -1,9 +1,151 @@
+-- NEW Bloxy Bingo AUTO MARK (Precise: ONLY Called Numbers!) + Auto Bingo
+-- Draggable Toggle Button | GREEN=ON | Tested Delta 2026 | Event Hook + Firesignal
+-- Update Script_new on GitHub with this → loadstring ready!
+
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local RS = game:GetService("ReplicatedStorage")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+print("🟢 Bloxy Bingo Auto Mark Loading...")
+
+-- Wait for game
+repeat task.wait(0.5) until playerGui:FindFirstChild("Bingo")
+print("🟢 Bingo GUI Found!")
+
+-- ScreenGui
 local sg = Instance.new("ScreenGui")
-sg.Parent = game.CoreGui  -- Try CoreGui first (bypasses some PlayerGui blocks)
-local btn = Instance.new("TextButton", sg)
-btn.Size = UDim2.new(0, 300, 0, 150)
-btn.Position = UDim2.new(0.5, -150, 0.5, -75)
-btn.BackgroundColor3 = Color3.new(1, 0, 0)  -- Red
-btn.Text = "HI - Delta Test!"
-btn.TextScaled = true
-print("Red HI button should appear center!")
+sg.Name = "BloxyAutoMark"
+sg.ResetOnSpawn = false
+sg.Parent = playerGui  -- Works since test passed!
+
+-- Draggable Toggle Button (Big, Visible)
+local toggleBtn = Instance.new("TextButton")
+toggleBtn.Name = "AutoMarkToggle"
+toggleBtn.Parent = sg
+toggleBtn.Size = UDim2.new(0, 120, 0, 120)
+toggleBtn.Position = UDim2.new(0, 20, 0.5, -60)
+toggleBtn.BackgroundColor3 = Color3.fromRGB(255, 0, 0)  -- Red OFF
+toggleBtn.BorderSizePixel = 0
+toggleBtn.Font = Enum.Font.GothamBold
+toggleBtn.Text = "AUTO\nMARK\nOFF"
+toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleBtn.TextScaled = true
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim2.new(1, 0, 1, 0)
+corner.Parent = toggleBtn
+local stroke = Instance.new("UIStroke")
+stroke.Color = Color3.fromRGB(255, 255, 255)
+stroke.Thickness = 4
+stroke.Parent = toggleBtn
+
+print("🟢 Button Created! Drag & Tap to Toggle ON")
+
+-- Drag Support (Mobile/PC)
+local dragging, dragInput, startPos
+toggleBtn.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragInput = input
+        startPos = toggleBtn.Position
+        print("🟢 Dragging started")
+    end
+end)
+UIS.InputChanged:Connect(function(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) and input == dragInput then
+        local delta = input.Position - dragInput.Position
+        toggleBtn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+UIS.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end)
+
+-- Auto Vars
+local autoEnabled = false
+local markConnection = nil
+local claimConnection = nil
+local subContainer = playerGui.Bingo.StaticDisplayArea.Cards.PlayerArea.Cards.Container.SubContainer
+
+-- CLICK Function (Firesignal - Works on Delta!)
+local function fireClick(btn)
+    if not btn or not btn.Parent then return end
+    pcall(function()
+        for _, conn in pairs(getconnections(btn.MouseButton1Click)) do conn:Fire() end
+        for _, conn in pairs(getconnections(btn.MouseButton1Down)) do conn:Fire() end
+        for _, conn in pairs(getconnections(btn.Activated)) do conn:Fire() end
+        print("✅ Clicked: " .. (btn:FindFirstChild("TextLabel") and btn.TextLabel.Text or "unknown"))
+    end)
+end
+
+-- Find & Mark Matching Number
+local function markNumber(numStr)
+    local cardsCont = subContainer:FindFirstChild("Blocks") and subContainer.Blocks.Block or subContainer.VerticalScroll.Cards
+    if cardsCont then
+        for _, card in pairs(cardsCont:GetChildren()) do
+            if card:IsA("Frame") then
+                local content = card:FindFirstChild("Content")
+                local numbers = content and content:FindFirstChild("Numbers")
+                if numbers then
+                    for _, numBtn in pairs(numbers:GetChildren()) do
+                        local textLabel = numBtn:FindFirstChild("TextLabel")
+                        if textLabel and textLabel.Text == numStr then
+                            fireClick(numBtn)
+                            return true  -- Marked one
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return false
+end
+
+-- Toggle Function
+toggleBtn.MouseButton1Click:Connect(function()
+    autoEnabled = not autoEnabled
+    if autoEnabled then
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(0, 255, 0)  -- Green ON
+        toggleBtn.Text = "AUTO\nMARK\nON"
+        print("🟢 AUTO MARK ENABLED!")
+
+        -- Hook CallNumber Event (Precise!)
+        local bingoRemote = RS:WaitForChild("Remotes"):WaitForChild("Bingo"):WaitForChild("CallNumber")
+        markConnection = bingoRemote.OnClientEvent:Connect(function(num)
+            local numStr = tostring(math.floor(num))
+            print("📞 Called: " .. numStr)
+            markNumber(numStr)
+        end)
+        print("🟢 Hooked CallNumber Event!")
+
+        -- Auto Claim Loop
+        claimConnection = game:GetService("RunService").Heartbeat:Connect(function()
+            local cardsCont = subContainer:FindFirstChild("Blocks") and subContainer.Blocks.Block or subContainer.VerticalScroll.Cards
+            local claimBtn = subContainer:FindFirstChild("Buttons") and subContainer.Buttons:FindFirstChild("ClaimButton")
+            if cardsCont and claimBtn then
+                for _, card in pairs(cardsCont:GetChildren()) do
+                    if card:IsA("Frame") then
+                        local toGo = card:FindFirstChild("ToGo")
+                        if toGo and toGo:FindFirstChild("ToGoText") and toGo.ToGoText.Text == "BINGO!" then
+                            fireClick(claimBtn)
+                            print("🎉 BINGO CLAIMED!")
+                            return
+                        end
+                    end
+                end
+            end
+        end)
+    else
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(255, 0, 0)  -- Red OFF
+        toggleBtn.Text = "AUTO\nMARK\nOFF"
+        print("🔴 AUTO MARK DISABLED")
+        if markConnection then markConnection:Disconnect() end
+        if claimConnection then claimConnection:Disconnect() end
+    end
+end)
+
+print("🚀 Bloxy Auto Mark FULLY LOADED! Tap red button → GREEN ON → Auto wins! (Check console logs)")
