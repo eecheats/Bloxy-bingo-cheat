@@ -1,166 +1,29 @@
--- FIXED Bloxy Bingo Auto (Mobile/PC, NO LIBS, Firesignal Clicks - Universal!)
--- Draggable Button ALWAYS Shows | Tap ON (Green): Auto-Marks CALLED #s + Auto BINGO
--- NO VIM | Works on Arceus X, Hydrogen, ALL executors 2026
--- Update your GitHub Script_new with this!
+-- SUPER SIMPLE TEST: Just shows a "HI" button
+-- If you see a blue button saying "HI" → your executor works fine for GUIs!
+-- If NOT → problem is executor/injection, not the code.
 
-local Players = game:GetService("Players")
-local UIS = game:GetService("UserInputService")
-local RS = game:GetService("ReplicatedStorage")
+local player = game.Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
 
-local player = Players.LocalPlayer
-local playerGui = player.PlayerGui
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "TestGui"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = playerGui
 
-print("🟢 Bloxy Auto: Button loading...")
+local button = Instance.new("TextButton")
+button.Name = "TestButton"
+button.Parent = screenGui
+button.Size = UDim2.new(0, 200, 0, 100)
+button.Position = UDim2.new(0.5, -100, 0.5, -50)  -- centered on screen
+button.BackgroundColor3 = Color3.fromRGB(0, 170, 255)  -- nice blue
+button.BorderSizePixel = 0
+button.Font = Enum.Font.GothamBold
+button.Text = "HI"
+button.TextColor3 = Color3.fromRGB(255, 255, 255)
+button.TextSize = 60
 
--- ScreenGui (IMMEDIATE - NO WAITS!)
-local sg = Instance.new("ScreenGui")
-sg.Name = "BloxyAuto"
-sg.ResetOnSpawn = false
-sg.Parent = playerGui
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim2.new(0, 12, 0, 12)
+corner.Parent = button
 
--- Draggable Toggle Button
-local toggleBtn = Instance.new("TextButton")
-toggleBtn.Name = "ToggleAuto"
-toggleBtn.Parent = sg
-toggleBtn.Size = UDim2.new(0, 100, 0, 100)
-toggleBtn.Position = UDim2.new(0, 20, 0.5, -50)
-toggleBtn.BackgroundColor3 = Color3.fromRGB(255, 0, 0)  -- Red = OFF
-toggleBtn.BorderSizePixel = 0
-toggleBtn.Font = Enum.Font.GothamBold
-toggleBtn.Text = "AUTO\nOFF"
-toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-toggleBtn.TextScaled = true
-local uicorner = Instance.new("UICorner")
-uicorner.CornerRadius = UDim2.new(1, 0, 1, 0)
-uicorner.Parent = toggleBtn
-local uistroke = Instance.new("UIStroke")
-uistroke.Color = Color3.fromRGB(0, 0, 0)
-uistroke.Thickness = 3
-uistroke.Parent = toggleBtn
-
-print("🟢 Bloxy Auto: Button CREATED! Drag/tap it.")
-
--- Drag (Mobile/PC)
-local dragging, dragInput, startPos
-toggleBtn.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = true
-        dragInput = input
-        startPos = toggleBtn.Position
-    end
-end)
-UIS.InputChanged:Connect(function(input)
-    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) and input == dragInput then
-        local delta = input.Position - dragInput.Position
-        toggleBtn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-    end
-end)
-UIS.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = false
-    end
-end)
-
--- Auto Vars
-local autoEnabled = false
-local markConn = nil
-local bingoGui = nil
-
--- Universal CLICK (Firesignal - NO VIM!)
-local function click(btn)
-    if not btn or not btn.Parent then return end
-    pcall(function()
-        for _, c in pairs(getconnections(btn.MouseButton1Click)) do c:Fire() end
-        for _, c in pairs(getconnections(btn.MouseButton1Down)) do c:Fire() end
-        for _, c in pairs(getconnections(btn.Activated)) do c:Fire() end
-    end)
-end
-
--- Get subContainer safely
-local function getSubContainer()
-    bingoGui = playerGui:FindFirstChild("Bingo")
-    if not bingoGui then return nil end
-    return bingoGui.StaticDisplayArea.Cards.PlayerArea.Cards.Container.SubContainer
-end
-
--- Claim BINGO loop
-spawn(function()
-    while true do
-        if autoEnabled then
-            task.wait(0.2)
-            local subContainer = getSubContainer()
-            if subContainer then
-                local cardsCont = subContainer:FindFirstChild("Blocks") and subContainer.Blocks.Block or subContainer.VerticalScroll.Cards
-                local claimBtn = subContainer.Buttons.ClaimButton
-                if cardsCont and claimBtn then
-                    for _, card in pairs(cardsCont:GetChildren()) do
-                        if card:IsA("Frame") then
-                            local toGo = card:FindFirstChild("ToGo")
-                            if toGo and toGo:FindFirstChild("ToGoText") and toGo.ToGoText.Text == "BINGO!" then
-                                click(claimBtn)
-                                print("🟢 BINGO CLAIMED!")
-                                break
-                            end
-                        end
-                    end
-                end
-            end
-        else
-            task.wait(1)
-        end
-    end
-end)
-
--- TOGGLE
-toggleBtn.MouseButton1Click:Connect(function()
-    autoEnabled = not autoEnabled
-    if autoEnabled then
-        toggleBtn.BackgroundColor3 = Color3.fromRGB(0, 255, 0)  -- Green ON
-        toggleBtn.Text = "AUTO\nON"
-        print("🟢 AUTO ENABLED! Waiting for Bingo game...")
-
-        -- Hook CALL NUMBER EVENT (Precise auto-mark)
-        local bingoRemote = RS:FindFirstChild("Remotes") and RS.Remotes:FindFirstChild("Bingo") and RS.Remotes.Bingo:FindFirstChild("CallNumber")
-        if bingoRemote then
-            markConn = bingoRemote.OnClientEvent:Connect(function(num)
-                local numStr = tostring(math.floor(num))
-                print("📞 Called: " .. numStr)
-                local subContainer = getSubContainer()
-                if subContainer then
-                    local cardsCont = subContainer:FindFirstChild("Blocks") and subContainer.Blocks.Block or subContainer.VerticalScroll.Cards
-                    if cardsCont then
-                        for _, card in pairs(cardsCont:GetChildren()) do
-                            if card:IsA("Frame") then
-                                local content = card:FindFirstChild("Content")
-                                local nums = content and content:FindFirstChild("Numbers")
-                                if nums then
-                                    for _, nBtn in pairs(nums:GetChildren()) do
-                                        local txtLbl = nBtn:FindFirstChild("TextLabel")
-                                        local btnText = (txtLbl and txtLbl.Text) or nBtn.Text or ""
-                                        if btnText == numStr then
-                                            click(nBtn)
-                                            print("✅ Marked " .. numStr .. " on card!")
-                                        end
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
-            end)
-            print("🟢 Event hooked!")
-        else
-            print("❌ Remote not found yet...")
-        end
-    else
-        toggleBtn.BackgroundColor3 = Color3.fromRGB(255, 0, 0)  -- Red OFF
-        toggleBtn.Text = "AUTO\nOFF"
-        print("🔴 AUTO DISABLED")
-        if markConn then
-            markConn:Disconnect()
-            markConn = nil
-        end
-    end
-end)
-
-print("🚀 Bloxy Auto FULLY LOADED! Red button on left - Drag & Tap ON in game!")
+print("Test button created! Look for a big blue 'HI' in the middle of your screen.")
