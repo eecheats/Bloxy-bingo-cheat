@@ -1,29 +1,9 @@
--- SUPER SIMPLE TEST: Just shows a "HI" button
--- If you see a blue button saying "HI" → your executor works fine for GUIs!
--- If NOT → problem is executor/injection, not the code.
-
-local player = game.Players.LocalPlayer
-local playerGui = player:WaitForChild("PlayerGui")
-
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "TestGui"
-screenGui.ResetOnSpawn = false
-screenGui.Parent = playerGui
-
-local button = Instance.new("TextButton")
-button.Name = "TestButton"
-button.Parent = screenGui
-button.Size = UDim2.new(0, 200, 0, 100)
-button.Position = UDim2.new(0.5, -100, 0.5, -50)  -- centered on screen
-button.BackgroundColor3 = Color3.fromRGB(0, 170, 255)  -- nice blue
-button.BorderSizePixel = 0
-button.Font = Enum.Font.GothamBold
-button.Text = "HI"
-button.TextColor3 = Color3.fromRGB(255, 255, 255)
-button.TextSize = 60
-
-local corner = Instance.new("UICorner")
-corner.CornerRadius = UDim2.new(0, 12, 0, 12)
-corner.Parent = button
-
-print("Test button created! Look for a big blue 'HI' in the middle of your screen.")
+local sg = Instance.new("ScreenGui")
+sg.Parent = game.CoreGui  -- Try CoreGui first (bypasses some PlayerGui blocks)
+local btn = Instance.new("TextButton", sg)
+btn.Size = UDim2.new(0, 300, 0, 150)
+btn.Position = UDim2.new(0.5, -150, 0.5, -75)
+btn.BackgroundColor3 = Color3.new(1, 0, 0)  -- Red
+btn.Text = "HI - Delta Test!"
+btn.TextScaled = true
+print("Red HI button should appear center!")
