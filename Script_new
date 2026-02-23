@@ -1,0 +1,142 @@
+-- NEW Bloxy Bingo Auto-Marker + Auto-Bingo (Mobile/PC, No Libs, VIM Clicks)
+-- FIXED: Custom draggable toggle button, ONLY clicks CALLED numbers, works on ALL executors!
+-- Toggle: Drag to move, Tap to ON/OFF. Green=ON, Red=OFF
+-- WARNING: TOS violation - alt account only!
+
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local VIM = game:GetService("VirtualInputManager")
+local RS = game:GetService("ReplicatedStorage")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- Wait for Bingo GUI
+repeat task.wait() until playerGui:FindFirstChild("Bingo")
+
+-- ScreenGui
+local sg = Instance.new("ScreenGui")
+sg.Name = "BloxyAuto"
+sg.ResetOnSpawn = false
+sg.Parent = playerGui
+
+-- Draggable Toggle Button (TextButton - tap toggle, drag move)
+local toggleBtn = Instance.new("TextButton")
+toggleBtn.Name = "Toggle"
+toggleBtn.Parent = sg
+toggleBtn.Size = UDim2.new(0, 90, 0, 90)
+toggleBtn.Position = UDim2.new(0, 20, 0.5, -45)
+toggleBtn.BackgroundColor3 = Color3.fromRGB(255, 0, 0) -- Red OFF
+toggleBtn.BorderSizePixel = 0
+toggleBtn.Font = Enum.Font.GothamBold
+toggleBtn.Text = "AUTO\nOFF"
+toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleBtn.TextScaled = true
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim2.new(1, 0, 1, 0)
+corner.Parent = toggleBtn
+local stroke = Instance.new("UIStroke")
+stroke.Color = Color3.fromRGB(0, 0, 0)
+stroke.Thickness = 2
+stroke.Parent = toggleBtn
+
+-- Drag script (works mobile/PC)
+local dragging = false
+local dragInput = nil
+local startPos = nil
+toggleBtn.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragInput = input
+        startPos = toggleBtn.Position
+    end
+end)
+UIS.InputChanged:Connect(function(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) and input == dragInput then
+        local delta = input.Position - dragInput.Position
+        toggleBtn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+UIS.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end)
+
+-- Auto vars
+local autoEnabled = false
+local markConn = nil
+local subContainer = playerGui.Bingo.StaticDisplayArea.Cards.PlayerArea.Cards.Container.SubContainer
+
+local function vclick(btn)
+    if not btn or not btn.Parent or not btn.Visible then return end
+    local pos = btn.AbsolutePosition + (btn.AbsoluteSize / 2)
+    VIM:SendMouseButtonEvent(pos.X, pos.Y, 0, true, game, 1)
+    task.wait(0.05)
+    VIM:SendMouseButtonEvent(pos.X, pos.Y, 0, false, game, 1)
+end
+
+-- Claim loop (always runs, checks flag)
+spawn(function()
+    while true do
+        if autoEnabled then
+            task.wait(0.3)
+            local cardsCont = subContainer:FindFirstChild("Blocks") and subContainer.Blocks.Block or subContainer.VerticalScroll.Cards
+            local claimBtn = subContainer.Buttons.ClaimButton
+            if cardsCont and claimBtn then
+                for _, card in pairs(cardsCont:GetChildren()) do
+                    if card:IsA("Frame") then
+                        local toGo = card:FindFirstChild("ToGo")
+                        if toGo and toGo:FindFirstChild("ToGoText") and toGo.ToGoText.Text == "BINGO!" then
+                            vclick(claimBtn)
+                            break
+                        end
+                    end
+                end
+            end
+        else
+            task.wait(1)
+        end
+    end
+end)
+
+-- Toggle
+toggleBtn.MouseButton1Click:Connect(function()
+    autoEnabled = not autoEnabled
+    if autoEnabled then
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(0, 255, 0) -- Green ON
+        toggleBtn.Text = "AUTO\nON"
+        -- Connect marker
+        local bingoRemote = RS.Remotes.Bingo.CallNumber
+        markConn = bingoRemote.OnClientEvent:Connect(function(num)
+            local numStr = tostring(math.floor(num))
+            local cardsCont = subContainer:FindFirstChild("Blocks") and subContainer.Blocks.Block or subContainer.VerticalScroll.Cards
+            if cardsCont then
+                for _, card in pairs(cardsCont:GetChildren()) do
+                    if card:IsA("Frame") then
+                        local content = card:FindFirstChild("Content")
+                        local nums = content and content:FindFirstChild("Numbers")
+                        if nums then
+                            for _, nBtn in pairs(nums:GetChildren()) do
+                                local txtLbl = nBtn:FindFirstChild("TextLabel")
+                                local btnText = txtLbl and txtLbl.Text or nBtn.Text or ""
+                                if btnText == numStr then
+                                    vclick(nBtn)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end)
+    else
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(255, 0, 0) -- Red OFF
+        toggleBtn.Text = "AUTO\nOFF"
+        if markConn then
+            markConn:Disconnect()
+            markConn = nil
+        end
+    end
+end)
+
+print("Bloxy Auto Loaded! Drag/tap the red button to toggle. 🚀")
